@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="220" viewBox="0 0 800 220">
+  <rect width="800" height="220" rx="32" fill="#080B10"/>
+  <path d="m50 168 63-120h26l-61 120Zm83-42 21-41 42 83h-28Z" fill="#4ED8FF"/>
+  <text x="238" y="151" fill="#F5F7FA" font-family="Arial,sans-serif" font-size="114"
+        font-weight="600" letter-spacing="19">AERA</text>
+</svg>

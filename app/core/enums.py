@@ -1,0 +1,21 @@
+from enum import StrEnum
+
+
+class PaymentStatus(StrEnum):
+    CREATED = "CREATED"
+    PENDING = "PENDING"
+    PAID = "PAID"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+    REFUNDED = "REFUNDED"
+
+
+class SubscriptionStatus(StrEnum):
+    PENDING_PAYMENT = "PENDING_PAYMENT"
+    PENDING_PROVISIONING = "PENDING_PROVISIONING"
+    TRIAL = "TRIAL"
+    ACTIVE = "ACTIVE"
+    EXPIRING = "EXPIRING"
+    EXPIRED = "EXPIRED"
+    SUSPENDED = "SUSPENDED"
+    CANCELLED = "CANCELLED"

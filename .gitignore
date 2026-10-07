@@ -1,0 +1,28 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+# Runtime data
+*.db
+*.sqlite*
+*.log
+.cache/
+model_snapshot/
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+# Optional third-party installers
+*.exe

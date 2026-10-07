@@ -1,0 +1,13 @@
+from typing import Protocol
+
+from app.integrations.xui.schemas import ClientSpec, Traffic
+
+
+class XUIClient(Protocol):
+    async def ensure_client(self, spec: ClientSpec) -> None: ...
+
+    async def delete_client(self, inbound_id: int, uuid: str) -> None: ...
+
+    async def get_client_traffic(self, email: str) -> Traffic: ...
+
+    async def get_server_status(self) -> bool: ...
