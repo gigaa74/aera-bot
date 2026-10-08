@@ -240,11 +240,6 @@ async def test_broadcasts(sessions):
     assert {chat for chat, *_ in bot.sent} == {1, 2}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="send_broadcasts skips the completion check when the last delivery is for a "
-    "user who is already blocked, so the broadcast never reaches DONE",
-)
 async def test_broadcast_completes_when_last_recipient_is_blocked(sessions):
     async with sessions.begin() as db:
         user = await add_user(db, 1)

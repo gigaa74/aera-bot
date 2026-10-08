@@ -207,33 +207,36 @@ async def send_broadcasts(sessions, bot: Bot) -> None:
                         [InlineKeyboardButton(text=broadcast.button_text, url=broadcast.button_url)]
                     ]
                 )
-            try:
-                if user.is_blocked:
-                    delivery.status = "BLOCKED"
-                    broadcast.blocked += 1
-                    continue
-                if broadcast.image_file_id:
-                    await bot.send_photo(
-                        user.telegram_id,
-                        broadcast.image_file_id,
-                        caption=broadcast.text,
-                        reply_markup=markup,
-                    )
-                else:
-                    await bot.send_message(user.telegram_id, broadcast.text, reply_markup=markup)
-            except TelegramForbiddenError:
+            if user.is_blocked:
+                # Count it like any other outcome so the broadcast can still reach DONE.
                 delivery.status = "BLOCKED"
                 broadcast.blocked += 1
-                user.is_blocked = True
-            except TelegramRetryAfter as error:
-                await asyncio.sleep(min(error.retry_after, 30))
-                break
-            except Exception:
-                delivery.status = "FAILED"
-                broadcast.failed += 1
             else:
-                delivery.status = "SENT"
-                broadcast.sent += 1
+                try:
+                    if broadcast.image_file_id:
+                        await bot.send_photo(
+                            user.telegram_id,
+                            broadcast.image_file_id,
+                            caption=broadcast.text,
+                            reply_markup=markup,
+                        )
+                    else:
+                        await bot.send_message(
+                            user.telegram_id, broadcast.text, reply_markup=markup
+                        )
+                except TelegramForbiddenError:
+                    delivery.status = "BLOCKED"
+                    broadcast.blocked += 1
+                    user.is_blocked = True
+                except TelegramRetryAfter as error:
+                    await asyncio.sleep(min(error.retry_after, 30))
+                    break
+                except Exception:
+                    delivery.status = "FAILED"
+                    broadcast.failed += 1
+                else:
+                    delivery.status = "SENT"
+                    broadcast.sent += 1
+                await asyncio.sleep(0.06)
             if broadcast.sent + broadcast.failed + broadcast.blocked >= broadcast.total:
                 broadcast.status = "DONE"
-            await asyncio.sleep(0.06)

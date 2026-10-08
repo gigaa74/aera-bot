@@ -408,3 +408,9 @@ def test_portal_texts_have_all_languages():
     for key, values in COPY.items():
         assert len(values) in (1, len(LANGUAGES)), key
     assert tr("welcome", "zz") == tr("welcome", "ru")
+
+
+def test_welcome_copy_has_no_debug_marker():
+    from app.bot.texts.portal import COPY
+
+    assert all("plat chek" not in value for value in COPY["welcome"])
