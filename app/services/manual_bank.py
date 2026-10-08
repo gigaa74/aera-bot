@@ -2,16 +2,19 @@
 
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from urllib.parse import urlsplit
 
 from sqlalchemy import select, update
 
 from app.db.models import PaidLink, Payment, SaleOrder, SupportTicket, User
+from app.services.commerce import utc
 from app.services.portal import confirm_order
 
 _create_lock = asyncio.Lock()
+# WATA links expire after 3 days; allow a day for late settlement before giving up.
+WATA_ABANDON_AFTER = timedelta(days=4)
 
 
 def merchant(settings, provider):
@@ -110,6 +113,24 @@ async def checkout(sessions, settings, order_id, user_id, provider):
         await adapter.close()
 
 
+async def cancel(sessions, record):
+    """Close a checkout the merchant can no longer settle so it stops occupying the poll batch.
+
+    The order keeps its reserved key and can be paid again with a new checkout.
+    """
+    async with sessions.begin() as db:
+        await db.execute(
+            update(User).where(User.id == record.user_id).values(is_active=User.is_active)
+        )
+        payment = await db.get(Payment, record.id, populate_existing=True)
+        if payment.status != "PENDING":
+            return
+        payment.status = "CANCELLED"
+        order = await db.scalar(select(SaleOrder).where(SaleOrder.payment_id == payment.id))
+        if order and not order.paid_at:
+            order.payment_id = None
+
+
 async def poll(sessions, settings):
     async with sessions() as db:
         records = list(
@@ -118,14 +139,14 @@ async def poll(sessions, settings):
                 .where(
                     Payment.status == "PENDING",
                     Payment.provider.in_(["manual_yookassa", "manual_wata"]),
+                    # Without a checkout link nobody can pay; such rows must not use up the batch.
+                    Payment.details["checkout_url"].as_string().is_not(None),
                 )
                 .order_by(Payment.created_at)
                 .limit(40)
             )
         )
     for record in records:
-        if not record.details.get("checkout_url"):
-            continue
         provider = record.provider.removeprefix("manual_")
         adapter = merchant(settings, provider)
         if adapter is None:
@@ -139,11 +160,20 @@ async def poll(sessions, settings):
                     and body.get("paid") is True
                     and yoo_matches(body, record.id, record.amount_minor)
                 )
+                abandoned = (
+                    body.get("id") == record.provider_payment_id
+                    and body.get("status") == "canceled"
+                )
             else:
                 body = await adapter.paid_transaction(
                     record.id, record.amount_minor, record.provider_payment_id
                 )
                 paid = body is not None
+                abandoned = (
+                    not paid and datetime.now(UTC) - utc(record.created_at) > WATA_ABANDON_AFTER
+                )
+            if abandoned:
+                await cancel(sessions, record)
             if paid:
                 async with sessions.begin() as db:
                     await db.execute(
