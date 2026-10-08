@@ -27,10 +27,12 @@ jobs:
           cache-dependency-path: requirements.lock
       - name: Install dependencies
         run: |
-          pip install -r requirements.lock
+          pip install -r requirements.lock coverage==7.16.2
           pip install --no-deps -e .
-      - name: Tests
-        run: pytest -q
+      - name: Tests with coverage
+        run: |
+          coverage run -m pytest -q
+          coverage report --skip-covered
       # Older modules predate the lint config, so only files touched by the change are checked.
       - name: Lint changed files
         env:

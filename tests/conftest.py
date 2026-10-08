@@ -1,7 +1,11 @@
 import os
+import tempfile
 
-# app.db.session builds an engine at import time; keep it away from PostgreSQL defaults.
-os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+# app.db.session builds an engine at import time; point it at a throwaway SQLite file
+# (an in-memory URL would give every pooled connection its own empty database).
+_APP_DB = os.path.join(tempfile.mkdtemp(prefix="aera-tests-"), "app.db")
+os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_APP_DB}"
+os.environ.setdefault("AERA_CHECKOUT_BRIDGE_KEY", "test-bridge-key")
 
 from datetime import UTC, datetime  # noqa: E402
 
@@ -70,3 +74,71 @@ async def add_order(db, plan_id, telegram_id, status="OPEN", amount=19900, **use
     db.add(order)
     await db.flush()
     return user, ticket, order
+
+
+@pytest.fixture
+async def app_sessions():
+    """The application's own session factory, on a fresh schema for each test."""
+    from app.db.session import engine, sessions
+
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.drop_all)
+        await connection.run_sync(Base.metadata.create_all)
+    yield sessions
+    await engine.dispose()
+
+
+@pytest.fixture
+def app_settings(monkeypatch):
+    """The cached settings object the app reads; attributes are restored after each test."""
+    from app.config import get_settings
+
+    current = get_settings()
+
+    def apply(**values):
+        for key, value in values.items():
+            monkeypatch.setattr(current, key, value)
+        return current
+
+    return apply
+
+
+def asgi_client(app, peer="127.0.0.1"):
+    import httpx
+
+    transport = httpx.ASGITransport(app=app, client=(peer, 50000))
+    return httpx.AsyncClient(transport=transport, base_url="http://aera.test")
+
+
+@pytest.fixture
+async def bot_driver(app_sessions, app_settings):
+    """The production dispatcher with in-memory FSM, fake Redis and a recording bot."""
+    import fakeredis.aioredis
+    from aiogram.fsm.storage.memory import MemoryStorage
+    from bot_harness import Driver, make_bot
+
+    from app.bot.middleware import GuardMiddleware
+    from app.bot.runtime import create_dispatcher
+
+    app_settings(admin_telegram_ids="999", bot_username="AeraBot")
+    dispatcher = create_dispatcher()
+    dispatcher.fsm.storage = MemoryStorage()
+    for manager in (
+        dispatcher.message.outer_middleware,
+        dispatcher.callback_query.outer_middleware,
+    ):
+        for middleware in manager._middlewares:
+            if isinstance(middleware, GuardMiddleware):
+                middleware.redis = fakeredis.aioredis.FakeRedis()
+    yield Driver(dispatcher, make_bot())
+
+
+@pytest.fixture
+async def app_plan_id(app_sessions):
+    async with app_sessions.begin() as db:
+        plan = Plan(
+            name="Month", slug="month", price_minor=19900, traffic_limit_bytes=0, device_limit=3
+        )
+        db.add(plan)
+        await db.flush()
+        return plan.id
