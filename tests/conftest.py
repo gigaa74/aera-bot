@@ -48,3 +48,25 @@ async def add_user(db, telegram_id):
     db.add(user)
     await db.flush()
     return user
+
+
+def make_settings(**values):
+    return Settings(_env_file=None, database_url=os.environ["DATABASE_URL"], **values)
+
+
+async def add_order(db, plan_id, telegram_id, status="OPEN", amount=19900, **user_values):
+    """A tariff request ticket with its sale order, as the manual sales flow creates them."""
+    from app.db.models import SaleOrder, SupportTicket
+
+    user = User(telegram_id=telegram_id, terms_accepted_at=datetime.now(UTC), **user_values)
+    db.add(user)
+    await db.flush()
+    ticket = SupportTicket(
+        user_id=user.id, category="TARIFF_REQUEST", subject="plan", status=status
+    )
+    db.add(ticket)
+    await db.flush()
+    order = SaleOrder(ticket_id=ticket.id, plan_id=plan_id, amount_rub_minor=amount)
+    db.add(order)
+    await db.flush()
+    return user, ticket, order
